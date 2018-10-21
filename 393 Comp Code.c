@@ -12,12 +12,6 @@
 #pragma config(Motor,  port9,           pDriveRR,      tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port10,          arm,           tmotorVex393_HBridge, openLoop)
 
-/*---------------------------------------------------------------------------*/
-/*                                                                           */
-/*        Description: Competition template for VEX EDR                      */
-/*                                                                           */
-/*---------------------------------------------------------------------------*/
-
 // This code is for the VEX cortex platform
 #pragma platform(VEX2)
 
@@ -26,6 +20,7 @@
 
 //Main competition background code...do not modify!
 #include "Vex_Competition_Includes.c"
+
 
 void setDrive(int leftSpeed, int rightSpeed) {
 	motor[pDriveLF] = motor[pDriveLM] = motor[pDriveLR] = leftSpeed;
@@ -46,6 +41,12 @@ void setCatapult(int speed) {
 
 void setCatapult() {
 	setCatapult(127);
+}
+
+void setCatapult(int speed, int time) {
+	setCatapult(speed);
+	wait1Msec(time);
+	setCatapult(0);
 }
 
 void setIntake(int speed) {
@@ -84,25 +85,106 @@ bool lowerCatapult(int position) {
 	if (SensorValue[catPot] < position) {
 		setCatapult(127);
 		return false;
-	} else {
+		} else {
 		return true;
 	}
 }
 
-void lockBase(int position) {
-	double k = .45;
-	setDrive(k*(SensorValue[rightQuad] - position));
+void lockBase(int position, double k, int time) {
+	int begin = nSysTime;
+	while (true) {
+		setDrive(-k*(SensorValue[rightQuad] - position));
+		if (nSysTime - begin >= time)
+			break;
+	}
 }
 
-/*---------------------------------------------------------------------------*/
-/*                          Pre-Autonomous Functions                         */
-/*                                                                           */
-/*  You may want to perform some actions before the competition starts.      */
-/*  Do them in the following function.  You must return from this function   */
-/*  or the autonomous and usercontrol tasks will not be started.  This       */
-/*  function is only called once after the cortex has been powered on and    */
-/*  not every time that the robot is disabled.                               */
-/*---------------------------------------------------------------------------*/
+int baseError;
+
+int lockBase(int position) {
+	double kp = 1.2;
+	double kd = .083;
+	int der = kd*((position - SensorValue[rightQuad]) - baseError;
+	setDrive(-kp*(SensorValue[rightQuad] - position) + der);
+	return position - SensorValue[rightQuad];
+}
+
+void driveByEncoder(int distance) {  //distance is in **Inches**
+
+	SensorValue[rightQuad] = 0;
+	int power;
+	int current = SensorValue[rightQuad];
+	int target = ((distance / 12.56)* 360) + current;
+	int error = target - current;
+	int der = 0;
+	int lastError = 0;
+	float kp = 0.534;
+	float kd = 0.083;
+
+	while(abs(error) > 5) {
+		current = SensorValue[rightQuad];
+		error = target - current; //right quad sensor value is flipped
+		der = error - lastError;
+		lastError = error;
+		power = error * kp + der * kd;
+		setDrive(power);
+		delay(20);
+	}
+	lockBase(current, .3, 200);
+	setDrive(0);
+}
+
+void lockBaseTurn() {
+
+	int current = SensorValue[rightQuad];
+	int arcLength = current;
+	int lastError = 0;
+	int error = arcLength - current;
+	int power = 0;
+	int der = 0;
+	float kp = 0.534;
+	float kd = 0.083;
+
+	int begin = nSysTime;
+
+	while (nSysTime - begin >= 200) {
+		current = SensorValue[rightQuad];
+		error = arcLength - current;
+
+		der = error - lastError;
+		lastError = error;
+
+		power = error * kp + der * kd;
+		setDrive(-power, power);
+		delay(20);
+	}
+}
+
+void turnByEncoder(int angle){
+	int current = SensorValue[rightQuad];
+	int arcLength = (angle * 35.7175/360) * 360 /12.56 + current;
+	int lastError = 0;
+	int error = arcLength - current;
+	int power = 0;
+	int der = 0;
+	float kp = 0.534;
+	float kd = 0.083;
+
+	while(abs(error) > 5) {
+		current = SensorValue[rightQuad];
+		error = arcLength - current;
+
+		der = error - lastError;
+		lastError = error;
+
+		power = error * kp + der * kd;
+		setDrive(-power * .55, power * .55);
+		delay(20);
+	}
+	//lockBaseTurn();
+	setDrive(0);
+}
+
 
 void pre_auton()
 {
@@ -118,37 +200,26 @@ void pre_auton()
 
 	// All activities that occur before the competition starts
 	// Example: clearing encoders, setting servo positions, ...
+
+	SensorValue[rightQuad] = 0;
 }
 
-/*---------------------------------------------------------------------------*/
-/*                                                                           */
-/*                              Autonomous Task                              */
-/*                                                                           */
-/*  This task is used to control your robot during the autonomous phase of   */
-/*  a VEX Competition.                                                       */
-/*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
-/*---------------------------------------------------------------------------*/
 
 task autonomous()
 {
-	// ..........................................................................
-	// Insert user code here.
-	// ..........................................................................
+	//----- drive forward, shoot, hit bottom flag-----
+	//driveByEncoder(10);
+	//delay(100);
+	//setCatapult(127, 500);
+	//driveByEncoder(28);
+	//------end-----
 
-	// Remove this function call once you have "real" code.
-	AutonomousCodePlaceholderForTesting();
+	//setDrive(0);
+	//driveByEncoder(10);
+
+	turnByEncoder(90);
+	//lockBaseTurn();
 }
-
-/*---------------------------------------------------------------------------*/
-/*                                                                           */
-/*                              User Control Task                            */
-/*                                                                           */
-/*  This task is used to control your robot during the user control phase of */
-/*  a VEX Competition.                                                       */
-/*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
-/*---------------------------------------------------------------------------*/
 
 task usercontrol()
 {
@@ -160,32 +231,30 @@ task usercontrol()
 		bool lastBase = false;
 		bool dir = false;
 		bool catRun = true;
-		float turtle = 1;
 		bool lockedBase = false;
 		int currentLock;
 
 		while (true) {
-			turtle = vexRT[Btn5U] ? 0.5 : 1;
 
 			lockedBase = newPress(Btn7U, lastBase) ? !lockedBase : lockedBase;
 			lastBase = vexRT[Btn7U];
 
 			if (!lockedBase) {
-				setDrive(deadZone(Ch3) * turtle, deadZone(Ch2) * turtle) ;
+				setDrive(dir ? -deadzone(Ch2) : deadZone(Ch3), dir ? -deadZone(Ch3) : deadZone(Ch2)) ;
 				currentLock = SensorValue[rightQuad];
 				} else {
-				lockBase(currentLock);
+				baseError = lockBase(currentLock);
 			}
 
 			dir = newPress(Btn8U, lastArm) ? !dir : dir;
-			setArm(buttonToPower(Btn6D, Btn8D, 127*(dir ? 1 : -1)));
+			setArm(buttonToPower(Btn6D, Btn8D, 127));
 			lastArm = vexRT[Btn8U];
 
 			if (catRun) {
 				setCatapult(buttonToPower(Btn6U, 127));
 				catRun = !vexRT[Btn7R];
 				} else {
-				catRun = lowerCatapult(3700);
+				catRun = lowerCatapult(3900);
 			}
 
 			setIntake(buttonToPower(Btn5D, Btn5U, 127));
